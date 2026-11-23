@@ -180,3 +180,38 @@ def test_model_subset_writes_only_those(tmp_path, monkeypatch):
     monkeypatch.setenv("RADAR_ROOT", str(tmp_path))
     run.main(["--data", "sar", "--models", "svm", "cnn", "--quick"])
     assert pd.read_csv(tmp_path / "results" / "sar" / "synthetic" / "summary.csv").model.tolist() == ["svm", "cnn"]
+
+
+# ---- app: every page renders after a run, and shows the run command when nothing is saved ----
+from pathlib import Path
+from streamlit.testing.v1 import AppTest
+
+APP = Path(__file__).resolve().parents[1] / "app"
+PAGES = [APP / "app.py", *sorted((APP / "pages").glob("*.py"))]
+
+
+def test_app_has_three_pages():
+    assert [p.name for p in PAGES[1:]] == ["1_Predict.py", "2_Compare_Models.py", "3_Robustness.py"]
+
+
+@pytest.mark.parametrize("page", PAGES, ids=lambda p: p.name)
+def test_pages_render_after_run(page, quick_root, monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", str(quick_root))
+    at = AppTest.from_file(str(page), default_timeout=120).run()
+    assert not at.exception
+
+
+@pytest.mark.parametrize("page", PAGES[1:], ids=lambda p: p.name)
+def test_pages_show_run_hint_when_empty(page, tmp_path, monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", str(tmp_path))
+    at = AppTest.from_file(str(page), default_timeout=120).run()
+    assert not at.exception and any("radar.core.run" in e.value for e in at.error)
+
+
+def test_predict_generate_mode_on_signal(quick_root, monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", str(quick_root))
+    at = AppTest.from_file(str(APP / "pages" / "1_Predict.py"), default_timeout=120).run()
+    at.sidebar.selectbox(key="data").set_value("signal").run()
+    at.radio[0].set_value("Generate class C at level L").run()
+    at.select_slider[0].set_value(20).run()
+    assert not at.exception and len(at.dataframe) == 1 and len(at.dataframe[0].value) == 4
