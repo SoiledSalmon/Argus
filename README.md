@@ -4,7 +4,7 @@ AIML Lab semester project (RVCE). The project classifies synthetic SAR chips and
 
 Read `docs/brief.md` and `docs/decisions.md` first. Work is split by owner, as set out in `docs/decisions.md` (D2).
 
-## Setup (CPU only, Python 3.11+)
+## Setup (CPU only, Python 3.12+)
 
 ```
 python -m venv .venv
