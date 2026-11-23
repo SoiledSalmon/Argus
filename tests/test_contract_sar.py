@@ -66,3 +66,11 @@ def test_mstar_not_yet():
 def test_perturb_single_sample():
     b = SarData().load("synthetic", seed=0)
     assert SarData().perturb(b.X_test_clean[:1], 0.5, seed=3).shape == (1, 64, 64)
+
+
+def test_cnn_input_is_log_standardised_per_chip():
+    b = SarData().load("synthetic", seed=0)
+    Xc = SarData().to_cnn_input(b.X_test[:5])
+    assert Xc.shape == (5, 1, 64, 64) and np.isfinite(Xc).all()
+    assert np.allclose(Xc.mean((1, 2, 3)), 0, atol=1e-4) and np.allclose(Xc.std((1, 2, 3)), 1, atol=1e-3)
+    assert np.allclose(SarData().to_cnn_input(b.X_test[2:3])[0], Xc[2])  # per chip, not per batch
