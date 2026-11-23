@@ -50,3 +50,19 @@ def test_features_and_spectrogram_finite_at_low_snr():
 
 def test_cnn_logits_shape():
     assert tuple(SignalCNN(8)(torch.zeros(2, 1, 64, 64)).shape) == (2, 8)
+
+
+from radar.signal import SignalData
+
+
+def test_load_snr_metadata_and_clean_copies():
+    b = SignalData().load("synthetic", seed=0)
+    assert b.class_names == CLASS_NAMES and b.foe_classes == FOE
+    snr = b.meta_test["snr_db"]
+    assert snr.min() >= -10 and snr.max() <= 20
+    assert abs(measured_snr_db(b.X_test_clean, b.X_test) - snr).mean() < 1.0
+
+
+def test_perturb_single_sample():
+    b = SignalData().load("synthetic", seed=0)
+    assert SignalData().perturb(b.X_test_clean[:1], 5, seed=3).shape == (1, 1024)
