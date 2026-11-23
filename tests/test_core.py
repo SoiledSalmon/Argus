@@ -66,3 +66,25 @@ def test_unknown_source_raises(dtb):
     dt, _ = dtb
     with pytest.raises(ValueError):
         dt.load("bogus", seed=0)
+
+
+# ---- platform: paths and metrics ----
+from radar.core import evaluate, paths
+
+
+def test_friend_foe_mapping():
+    assert evaluate.friend_foe(np.array([0, 1, 2]), ["a", "b", "c"], frozenset({"b"})).tolist() == [False, True, False]
+
+
+def test_metrics_values():
+    proba = np.eye(3)[[0, 1, 1, 2]]              # predicts a, b, b, c
+    m = evaluate.metrics(np.array([0, 1, 2, 2]), proba, ["a", "b", "c"], frozenset({"b"}))
+    assert m["accuracy"] == 0.75 and m["ff_accuracy"] == 0.75
+    assert m["ff_recall"] == 1.0 and m["ff_precision"] == 0.5
+    assert m["cm"][2] == [0, 1, 1] and m["ff_cm"] == [[2, 1], [0, 1]]
+
+
+def test_paths_follow_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("RADAR_ROOT", str(tmp_path))
+    assert paths.results_dir("sar", "synthetic") == tmp_path / "results" / "sar" / "synthetic"
+    assert "python -m radar.core.run --data sar --source synthetic" in paths.run_hint("sar", "synthetic")
