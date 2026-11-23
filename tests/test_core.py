@@ -132,3 +132,21 @@ def test_train_save_load_roundtrip(tmp_path):
     for n in loaded:
         a, c = make_predictor(dt, n, models[n])(b.X_test[:1]), make_predictor(dt, n, loaded[n])(b.X_test[:1])
         assert a.shape == (1, len(b.class_names)) and np.isclose(a.sum(), 1) and np.allclose(a, c, atol=1e-5)
+
+
+# ---- platform: robustness ----
+from dataclasses import replace
+from radar.core.robustness import sweep, breakdown
+
+
+def test_sweep_and_breakdown_shapes():
+    dt = DATA_TYPES["sar"]; b = subsample(dt.load("synthetic", 0), 4, 2, seed=0)
+    n = len(b.class_names); oracle = lambda X: np.full((len(X), n), 1 / n)
+    df = sweep(dt, b, {"u": oracle}, seed=0)
+    assert list(df.columns) == ["model", "level", "accuracy", "ff_accuracy"] and len(df) == len(dt.levels)
+    assert df.attrs["added_noise"] is False
+    assert sweep(dt, replace(b, X_test_clean=None), {"u": oracle}, seed=0).attrs["added_noise"] is True
+    meta = {"const": np.full(len(b.y_test), 15.0), "angle": np.linspace(0, 359, len(b.y_test))}
+    bd = breakdown(replace(b, meta_test=meta), {"u": b.y_test.copy()})
+    assert (bd[bd.key == "const"].shape[0] == 1) and (bd.accuracy == 1.0).all()
+    assert bd[bd.key == "angle"].n.sum() == len(b.y_test)
