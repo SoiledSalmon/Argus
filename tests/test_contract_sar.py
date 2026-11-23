@@ -45,3 +45,24 @@ def test_features_per_sample_and_finite():
 
 def test_cnn_logits_shape():
     assert tuple(SarCNN(10)(torch.zeros(2, 1, 64, 64)).shape) == (2, 10)
+
+
+from radar.sar import SarData
+
+
+def test_load_metadata_and_clean_copies():
+    b = SarData().load("synthetic", seed=0)
+    assert b.class_names == CLASS_NAMES and b.foe_classes == FOE
+    assert set(b.meta_test) >= {"aspect_deg", "depression_deg"}
+    assert (b.meta_test["depression_deg"] == 15).all()
+    assert np.abs(b.X_test - b.X_test_clean).mean() > 0
+
+
+def test_mstar_not_yet():
+    with pytest.raises(NotImplementedError):
+        SarData().load("mstar", seed=0)
+
+
+def test_perturb_single_sample():
+    b = SarData().load("synthetic", seed=0)
+    assert SarData().perturb(b.X_test_clean[:1], 0.5, seed=3).shape == (1, 64, 64)
