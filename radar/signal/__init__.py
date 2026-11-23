@@ -1,16 +1,22 @@
-# PLACEHOLDER (day-0, P3): replaced by P2
+"""Signal data type (P2): synthetic radar waveforms; for signals the synthetic data is the real data (D4)."""
 import numpy as np
-import torch
 from matplotlib.figure import Figure
 
 from radar.contracts import DataBundle, DataType
+from radar.signal.cnn import SignalCNN
+from radar.signal.features import signal_features, spectrogram
+from radar.signal.noise import add_awgn
+from radar.signal.waveforms import CLASS_NAMES, FOE, make_clean
 
-CLASS_NAMES = ["LFM", "Costas", "Barker", "Frank", "P1", "P2", "P3", "P4"]
-FOE = frozenset({"Costas", "Frank", "P3", "P4"})
+TRAIN_PER_CLASS, TEST_PER_CLASS = 300, 100
+SNR_RANGE = (-10.0, 20.0)  # dB, train and test (D4); the sweep re-noises clean test copies at exact levels
 
 
-def _complex(rng, shape):
-    return (rng.normal(size=shape) + 1j * rng.normal(size=shape)).astype(np.complex64)
+def _split(per_class: int, rng: np.random.Generator):
+    y = np.repeat(np.arange(len(CLASS_NAMES)), per_class).astype(np.int64)
+    clean = make_clean(y, rng)
+    snr = rng.uniform(*SNR_RANGE, len(y))
+    return y, snr, clean, add_awgn(clean, snr, rng)
 
 
 class SignalData(DataType):
@@ -21,29 +27,32 @@ class SignalData(DataType):
     def load(self, source="synthetic", seed=0):
         if source != "synthetic":
             raise ValueError(f"unknown signal source: {source!r}")
-        rng = np.random.default_rng(seed)
-        n = len(CLASS_NAMES)
-        y_tr, y_te = np.arange(100) % n, np.arange(40) % n
-        X_tr, X_te = _complex(rng, (100, 1024)), _complex(rng, (40, 1024))
-        return DataBundle(X_tr, y_tr.astype(np.int64), X_te, y_te.astype(np.int64), list(CLASS_NAMES), FOE,
-                          X_test_clean=X_te.copy(), meta_test={"snr_db": rng.uniform(-10, 20, 40)})
+        r_tr, r_te = np.random.default_rng(seed).spawn(2)
+        y_tr, _, _, X_tr = _split(TRAIN_PER_CLASS, r_tr)
+        y_te, snr_te, clean_te, X_te = _split(TEST_PER_CLASS, r_te)
+        return DataBundle(X_tr, y_tr, X_te, y_te, list(CLASS_NAMES), FOE, X_test_clean=clean_te,
+                          meta_test={"snr_db": snr_te})
 
     def features(self, X):
-        a = np.abs(X)
-        q = np.percentile(a, np.linspace(0, 100, 14), axis=1).T
-        return np.column_stack([a.mean(1), a.std(1), q]).astype(np.float32)
+        return signal_features(X)
 
     def to_cnn_input(self, X):
-        return np.abs(X).reshape(len(X), 1, 32, 32).astype(np.float32)
+        return spectrogram(X)
 
     def build_cnn(self, n_classes):
-        return torch.nn.Sequential(torch.nn.Conv2d(1, 8, 3), torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(1),
-                                   torch.nn.Flatten(), torch.nn.Linear(8, n_classes))
+        return SignalCNN(n_classes)
 
     def perturb(self, X, level, seed):
-        return (X + 0.1 * _complex(np.random.default_rng(seed), X.shape)).astype(X.dtype)
+        return add_awgn(X, level, np.random.default_rng(seed))
 
     def render(self, x):
-        fig = Figure(figsize=(6, 3))
-        fig.add_subplot().plot(x.real)
+        fig = Figure(figsize=(6, 4))
+        top, bottom = fig.subplots(2, 1)
+        top.plot(x.real, lw=0.6, label="I")
+        top.plot(x.imag, lw=0.6, label="Q")
+        top.set(xlabel="sample", xlim=(0, len(x)))
+        top.legend(loc="upper right", fontsize=7)
+        bottom.imshow(spectrogram(x[None])[0, 0], aspect="auto", origin="lower", cmap="viridis")
+        bottom.set(xlabel="time", ylabel="frequency", xticks=[], yticks=[])
+        fig.tight_layout()
         return fig
