@@ -33,3 +33,20 @@ def test_awgn_hits_requested_snr():
     for L in (-10, 0, 20):
         n = add_awgn(c, L, np.random.default_rng(1))
         assert n.dtype == np.complex64 and abs(measured_snr_db(c, n).mean() - L) < 1.0
+
+
+from radar.signal.features import signal_features, spectrogram
+from radar.signal.cnn import SignalCNN
+
+
+def test_features_and_spectrogram_finite_at_low_snr():
+    c = make_clean(np.arange(16) % 8, np.random.default_rng(0))
+    n = add_awgn(c, -10, np.random.default_rng(1))
+    F, S = signal_features(n), spectrogram(n)
+    assert F.shape[0] == 16 and F.dtype == np.float32 and np.isfinite(F).all()
+    assert S.shape == (16, 1, 64, 64) and S.dtype == np.float32 and np.isfinite(S).all()
+    assert np.allclose(signal_features(n[2:3])[0], F[2], atol=1e-5)
+
+
+def test_cnn_logits_shape():
+    assert tuple(SignalCNN(8)(torch.zeros(2, 1, 64, 64)).shape) == (2, 8)
