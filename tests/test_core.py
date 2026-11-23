@@ -117,3 +117,18 @@ def test_cnn_learns_toy_images_deterministically():
     p = cnn_proba(train_cnn(net(), X, y, seed=0, max_epochs=20, lr=1e-2), X)
     assert (p.argmax(1) == y).mean() > 0.9 and np.allclose(p.sum(1), 1, atol=1e-5)
     assert np.allclose(p, cnn_proba(train_cnn(net(), X, y, seed=0, max_epochs=20, lr=1e-2), X), atol=1e-5)
+
+
+# ---- platform: train / save / load / predict ----
+from radar.core.models import train_models, make_predictor, save_models, load_models, subsample
+
+
+def test_train_save_load_roundtrip(tmp_path):
+    dt = DATA_TYPES["sar"]; b = subsample(dt.load("synthetic", 0), 6, 2, seed=0)
+    models, secs = train_models(dt, b, ("svm", "cnn"), seed=0, cnn_epochs=1)
+    save_models(models, tmp_path)
+    loaded = load_models(dt, len(b.class_names), tmp_path)
+    assert list(loaded) == ["svm", "cnn"] and set(secs) == {"svm", "cnn"}
+    for n in loaded:
+        a, c = make_predictor(dt, n, models[n])(b.X_test[:1]), make_predictor(dt, n, loaded[n])(b.X_test[:1])
+        assert a.shape == (1, len(b.class_names)) and np.isclose(a.sum(), 1) and np.allclose(a, c, atol=1e-5)
