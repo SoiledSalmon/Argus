@@ -1,12 +1,22 @@
-# PLACEHOLDER (day-0, P3): replaced by P1
+"""SAR data type (P1): synthetic MSTAR-style chips now; real MSTAR arrives as a new `source` in week 1 (D5, D11)."""
 import numpy as np
-import torch
 from matplotlib.figure import Figure
 
 from radar.contracts import DataBundle, DataType
+from radar.sar.cnn import SarCNN
+from radar.sar.features import sar_features
+from radar.sar.synth import CLASS_NAMES, FOE, apply_speckle, make_clean
 
-CLASS_NAMES = ["2S1", "BMP2", "BRDM2", "BTR60", "BTR70", "D7", "T62", "T72", "ZIL131", "ZSU234"]
-FOE = frozenset({"T62", "T72", "ZSU234", "2S1", "BMP2"})
+TRAIN_PER_CLASS, TEST_PER_CLASS = 200, 60
+TEST_DEPRESSION = 15.0  # MSTAR standard protocol: train at 17°, test at 15°
+
+
+def _split(per_class: int, rng: np.random.Generator):
+    y = np.repeat(np.arange(len(CLASS_NAMES)), per_class).astype(np.int64)
+    aspects = rng.uniform(0, 360, len(y))
+    clean = make_clean(y, aspects, rng)
+    noisy = apply_speckle(clean, rng.uniform(0, 1, len(y)), rng)  # train across the full speckle range (D9)
+    return y, aspects, clean, noisy
 
 
 class SarData(DataType):
@@ -15,32 +25,31 @@ class SarData(DataType):
     levels = [0.0, 0.25, 0.5, 0.75, 1.0]
 
     def load(self, source="synthetic", seed=0):
+        if source == "mstar":
+            raise NotImplementedError("week 1")
         if source != "synthetic":
             raise ValueError(f"unknown SAR source: {source!r}")
-        rng = np.random.default_rng(seed)
-        n = len(CLASS_NAMES)
-        y_tr, y_te = np.arange(100) % n, np.arange(40) % n
-        X_tr = rng.random((100, 64, 64), dtype=np.float32)
-        X_te = rng.random((40, 64, 64), dtype=np.float32)
-        return DataBundle(X_tr, y_tr.astype(np.int64), X_te, y_te.astype(np.int64), list(CLASS_NAMES), FOE,
-                          X_test_clean=X_te.copy(), meta_test={"aspect_deg": rng.uniform(0, 360, 40)})
+        r_tr, r_te = np.random.default_rng(seed).spawn(2)
+        y_tr, _, _, X_tr = _split(TRAIN_PER_CLASS, r_tr)
+        y_te, asp_te, clean_te, X_te = _split(TEST_PER_CLASS, r_te)
+        return DataBundle(X_tr, y_tr, X_te, y_te, list(CLASS_NAMES), FOE, X_test_clean=clean_te,
+                          meta_test={"aspect_deg": asp_te, "depression_deg": np.full(len(y_te), TEST_DEPRESSION)})
 
     def features(self, X):
-        flat = X.reshape(len(X), -1)
-        q = np.percentile(flat, np.linspace(0, 100, 14), axis=1).T
-        return np.column_stack([flat.mean(1), flat.std(1), q]).astype(np.float32)
+        return sar_features(X)
 
     def to_cnn_input(self, X):
         return X[:, None].astype(np.float32)
 
     def build_cnn(self, n_classes):
-        return torch.nn.Sequential(torch.nn.Conv2d(1, 8, 3), torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(1),
-                                   torch.nn.Flatten(), torch.nn.Linear(8, n_classes))
+        return SarCNN(n_classes)
 
     def perturb(self, X, level, seed):
-        return (X + np.random.default_rng(seed).normal(0, level, X.shape)).astype(X.dtype)
+        return apply_speckle(X, level, np.random.default_rng(seed))
 
     def render(self, x):
         fig = Figure(figsize=(4, 4))
-        fig.add_subplot().imshow(x, cmap="gray")
+        ax = fig.add_subplot()
+        ax.imshow(x, cmap="gray", vmin=0, vmax=1)
+        ax.set(xticks=[], yticks=[])
         return fig
