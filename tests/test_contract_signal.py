@@ -23,3 +23,13 @@ def test_polyphase_codes_differ():
     ph = {c: polyphase_phases(c, 16) for c in ["Frank", "P1", "P2", "P3", "P4"]}
     keys = list(ph)
     assert all(not np.allclose(ph[a], ph[b]) for i, a in enumerate(keys) for b in keys[i + 1:])
+
+
+from radar.signal.noise import add_awgn, measured_snr_db
+
+
+def test_awgn_hits_requested_snr():
+    c = make_clean(np.arange(32) % 8, np.random.default_rng(0))
+    for L in (-10, 0, 20):
+        n = add_awgn(c, L, np.random.default_rng(1))
+        assert n.dtype == np.complex64 and abs(measured_snr_db(c, n).mean() - L) < 1.0
