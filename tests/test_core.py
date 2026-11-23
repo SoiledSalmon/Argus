@@ -150,3 +150,33 @@ def test_sweep_and_breakdown_shapes():
     bd = breakdown(replace(b, meta_test=meta), {"u": b.y_test.copy()})
     assert (bd[bd.key == "const"].shape[0] == 1) and (bd.accuracy == 1.0).all()
     assert bd[bd.key == "angle"].n.sum() == len(b.y_test)
+
+
+# ---- platform: run command ----
+import pandas as pd
+from radar.core import run
+
+
+@pytest.fixture(scope="module")
+def quick_root(tmp_path_factory):
+    root = tmp_path_factory.mktemp("root")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("RADAR_ROOT", str(root))
+        run.main(["--data", "all", "--quick"])
+    return root
+
+
+def test_quick_run_writes_everything(quick_root):
+    for d in DATA_TYPES:
+        r = quick_root / "results" / d / "synthetic"
+        s = pd.read_csv(r / "summary.csv")
+        assert s.model.tolist() == ["svm", "rf", "xgb", "cnn"] and s.accuracy.between(0, 1).all()
+        assert len(pd.read_csv(r / "robustness.csv")) == 4 * len(DATA_TYPES[d].levels)
+        assert (r / "breakdown.csv").exists() and (r / "raw" / "metrics.json").exists()
+        assert (quick_root / "models" / d / "synthetic" / "cnn.pt").exists()
+
+
+def test_model_subset_writes_only_those(tmp_path, monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", str(tmp_path))
+    run.main(["--data", "sar", "--models", "svm", "cnn", "--quick"])
+    assert pd.read_csv(tmp_path / "results" / "sar" / "synthetic" / "summary.csv").model.tolist() == ["svm", "cnn"]
