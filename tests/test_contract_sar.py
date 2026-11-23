@@ -30,3 +30,18 @@ def test_speckle_zero_is_identity_and_grows():
     assert e[0] < e[1] < e[2]
     hi = apply_speckle(c, 1.0, np.random.default_rng(1))
     assert np.isfinite(hi).all() and hi.min() >= 0 and hi.max() <= 1
+
+
+from radar.sar.features import sar_features
+from radar.sar.cnn import SarCNN
+
+
+def test_features_per_sample_and_finite():
+    c = make_clean(np.arange(10), np.zeros(10), np.random.default_rng(0))
+    F = sar_features(c)
+    assert F.shape[0] == 10 and F.dtype == np.float32 and np.isfinite(F).all()
+    assert np.allclose(sar_features(c[3:4])[0], F[3])
+
+
+def test_cnn_logits_shape():
+    assert tuple(SarCNN(10)(torch.zeros(2, 1, 64, 64)).shape) == (2, 10)
