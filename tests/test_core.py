@@ -88,3 +88,32 @@ def test_paths_follow_env(monkeypatch, tmp_path):
     monkeypatch.setenv("RADAR_ROOT", str(tmp_path))
     assert paths.results_dir("sar", "synthetic") == tmp_path / "results" / "sar" / "synthetic"
     assert "python -m radar.core.run --data sar --source synthetic" in paths.run_hint("sar", "synthetic")
+
+
+# ---- platform: classical models and CNN loop ----
+from radar.core.classical import build_classical
+from radar.core.deep import train_cnn, cnn_proba
+
+
+def _toy(n=120, seed=0):
+    r = np.random.default_rng(seed); y = np.arange(n) % 3
+    return (r.normal(size=(n, 5)) + y[:, None] * 3).astype(np.float32), y.astype(np.int64)
+
+
+def test_classical_fit_proba_deterministic():
+    X, y = _toy()
+    for name, m in build_classical(0).items():
+        p = m.fit(X, y).predict_proba(X[:1])
+        assert p.shape == (1, 3) and np.isclose(p.sum(), 1)
+        assert np.allclose(p, build_classical(0)[name].fit(X, y).predict_proba(X[:1]))
+
+
+def test_cnn_learns_toy_images_deterministically():
+    y = (np.arange(80) % 2).astype(np.int64)
+    X = (np.random.default_rng(0).normal(size=(80, 1, 8, 8)) * 0.1 + y[:, None, None, None]).astype(np.float32)
+    def net():
+        torch.manual_seed(0)
+        return torch.nn.Sequential(torch.nn.Conv2d(1, 4, 3), torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(1), torch.nn.Flatten(), torch.nn.Linear(4, 2))
+    p = cnn_proba(train_cnn(net(), X, y, seed=0, max_epochs=20, lr=1e-2), X)
+    assert (p.argmax(1) == y).mean() > 0.9 and np.allclose(p.sum(1), 1, atol=1e-5)
+    assert np.allclose(p, cnn_proba(train_cnn(net(), X, y, seed=0, max_epochs=20, lr=1e-2), X), atol=1e-5)
