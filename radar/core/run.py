@@ -1,9 +1,10 @@
 """python -m radar.core.run: train, evaluate and sweep, then save models and results (D8)."""
 import argparse
 import json
+import os
+import tempfile
 import time
 
-import numpy as np
 import pandas as pd
 
 from radar.core import paths
@@ -59,7 +60,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--quick", action="store_true", help="tiny subsample + 2 CNN epochs, for smoke tests")
     a = ap.parse_args(argv)
-    np.random.seed(a.seed)  # belt and braces: everything we call takes an explicit seed
+    if a.quick and "RADAR_ROOT" not in os.environ:  # smoke runs must never overwrite the real results/models
+        os.environ["RADAR_ROOT"] = tempfile.mkdtemp(prefix="radar-quick-")
+        print(f"--quick: writing to {os.environ['RADAR_ROOT']}")
     for d in (DATA_TYPES if a.data == "all" else [a.data]):
         run_one(d, a.source, tuple(a.models), a.seed, a.quick)
 

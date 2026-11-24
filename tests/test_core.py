@@ -215,3 +215,18 @@ def test_predict_generate_mode_on_signal(quick_root, monkeypatch):
     at.radio[0].set_value("Generate class C at level L").run()
     at.select_slider[0].set_value(20).run()
     assert not at.exception and len(at.dataframe) == 1 and len(at.dataframe[0].value) == 4
+
+
+# ---- audit fixes ----
+import os
+import shutil
+
+
+def test_quick_run_never_touches_repo_results(monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", "placeholder")
+    monkeypatch.delenv("RADAR_ROOT")  # unset now; monkeypatch removes whatever main() sets at teardown
+    repo = Path(__file__).resolve().parents[1]
+    before = {p: p.stat().st_mtime for p in (repo / "results").rglob("*.csv")}
+    run.main(["--data", "sar", "--models", "svm", "--quick"])
+    assert os.environ["RADAR_ROOT"] != str(repo) and (Path(os.environ["RADAR_ROOT"]) / "results" / "sar").exists()
+    assert before == {p: p.stat().st_mtime for p in (repo / "results").rglob("*.csv")}
