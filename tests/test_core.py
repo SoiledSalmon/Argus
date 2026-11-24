@@ -259,3 +259,12 @@ def test_app_picks_up_models_from_a_new_run(quick_root, tmp_path, monkeypatch):
     assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 4
     (root / "models" / "sar" / "synthetic" / "svm.joblib").unlink()  # what a `--models rf xgb cnn` re-run leaves
     assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 3
+
+
+def test_classical_models_use_no_deprecated_options():
+    import warnings
+    X, y = _toy()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        for m in build_classical(0).values():
+            m.fit(X, y).predict_proba(X[:2])
