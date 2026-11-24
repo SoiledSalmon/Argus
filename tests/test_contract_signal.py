@@ -66,3 +66,23 @@ def test_load_snr_metadata_and_clean_copies():
 def test_perturb_single_sample():
     b = SignalData().load("synthetic", seed=0)
     assert SignalData().perturb(b.X_test_clean[:1], 5, seed=3).shape == (1, 1024)
+
+
+from radar.signal.features import if_track_features, phase_step_hist
+
+
+def _clean(cls, n=8):
+    return make_clean(np.full(n, CLASS_NAMES.index(cls)), np.random.default_rng(0))
+
+
+def test_phase_steps_see_barker_pi_flips():
+    h_b, h_l = phase_step_hist(_clean("Barker")), phase_step_hist(_clean("LFM"))
+    assert np.allclose(h_b.sum(1), 1) and np.allclose(h_l.sum(1), 1)
+    outer = lambda h: h[:, [0, -1]].sum(1).mean()  # increments near +-pi
+    assert outer(h_b) > outer(h_l)
+
+
+def test_if_track_slope_separates_chirp_from_phase_code():
+    s_lfm = np.abs(if_track_features(_clean("LFM"))[:, 0]).mean()
+    s_bar = np.abs(if_track_features(_clean("Barker"))[:, 0]).mean()
+    assert s_lfm > 3 * s_bar

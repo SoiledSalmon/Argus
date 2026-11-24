@@ -7,8 +7,38 @@ from skimage.transform import resize
 EPS = 1e-12
 
 
+def if_track_features(X: np.ndarray) -> np.ndarray:
+    """Peak-frequency (instantaneous frequency) track over the pulse's energetic STFT frames: (N, 16).
+    Linear slope, curvature, residual, step size/rate, distinct levels, active frames, histogram of steps.
+    Separates chirp-like (LFM, P3, P4), stepped (Frank, P1, P2), hopped (Costas) and fixed-frequency (Barker) codes."""
+    out = []
+    for s in spectrogram(X)[:, 0]:
+        e = np.exp(s).sum(0)
+        act = np.flatnonzero(e > e.mean())
+        r = s[:, act].argmax(0).astype(float) if len(act) > 3 else np.zeros(4)
+        t = np.arange(len(r))
+        p1, p2 = np.polyfit(t, r, 1), np.polyfit(t, r, 2)
+        d = np.diff(r)
+        h = np.histogram(np.clip(d, -8, 8), bins=9, range=(-8, 8))[0] / len(d)
+        out.append(np.r_[p1[0], p2[0], (r - np.polyval(p1, t)).std(), np.abs(d).mean(), (np.abs(d) > 1).mean(),
+                         len(np.unique(r)), len(act), h])
+    return np.array(out, np.float32)
+
+
+def phase_step_hist(X: np.ndarray) -> np.ndarray:
+    """Histogram of carrier-removed sample-to-sample phase increments: (N, 16), rows sum to 1.
+    Shows each code's phase alphabet (e.g. Barker's pi flips)."""
+    d = np.angle(X[:, 1:] * np.conj(X[:, :-1]))
+    d = np.angle(np.exp(1j * (d - np.median(d, 1, keepdims=True))))  # remove carrier offset, rewrap
+    return np.stack([np.histogram(r, bins=16, range=(-np.pi, np.pi))[0] / len(r) for r in d]).astype(np.float32)
+
+
 def signal_features(X: np.ndarray) -> np.ndarray:
-    """(N, L) complex -> (N, F) float32."""
+    """(N, L) complex -> (N, F) float32: global statistics + instantaneous-frequency track + phase steps."""
+    return np.hstack([_global_stats(X), if_track_features(X), phase_step_hist(X)])
+
+
+def _global_stats(X: np.ndarray) -> np.ndarray:
     X = X.astype(np.complex128)
     phase = np.unwrap(np.angle(X), axis=1)
     inst_f = np.diff(phase, axis=1) / (2 * np.pi)
