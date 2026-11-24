@@ -215,3 +215,56 @@ def test_predict_generate_mode_on_signal(quick_root, monkeypatch):
     at.radio[0].set_value("Generate class C at level L").run()
     at.select_slider[0].set_value(20).run()
     assert not at.exception and len(at.dataframe) == 1 and len(at.dataframe[0].value) == 4
+
+
+# ---- audit fixes ----
+import os
+import shutil
+
+
+def test_quick_run_never_touches_repo_results(monkeypatch):
+    monkeypatch.setenv("RADAR_ROOT", "placeholder")
+    monkeypatch.delenv("RADAR_ROOT")  # unset now; monkeypatch removes whatever main() sets at teardown
+    repo = Path(__file__).resolve().parents[1]
+    before = {p: p.stat().st_mtime for p in (repo / "results").rglob("*.csv")}
+    run.main(["--data", "sar", "--models", "svm", "--quick"])
+    assert os.environ["RADAR_ROOT"] != str(repo) and (Path(os.environ["RADAR_ROOT"]) / "results" / "sar").exists()
+    assert before == {p: p.stat().st_mtime for p in (repo / "results").rglob("*.csv")}
+
+
+def test_saving_replaces_models_from_an_older_run(tmp_path):
+    dt = DATA_TYPES["sar"]; b = subsample(dt.load("synthetic", 0), 6, 2, seed=0)
+    save_models(train_models(dt, b, ("svm", "cnn"), seed=0, cnn_epochs=1)[0], tmp_path)
+    save_models(train_models(dt, b, ("svm",), seed=0)[0], tmp_path)
+    assert list(load_models(dt, len(b.class_names), tmp_path)) == ["svm"]
+
+
+def test_predict_shows_run_hint_for_mismatched_model(quick_root, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(quick_root, root)
+    from sklearn.linear_model import LogisticRegression
+    import joblib
+    stale = LogisticRegression().fit(np.random.default_rng(0).normal(size=(20, 3)), np.arange(20) % 10)  # trained on 3 features: an older code version
+    joblib.dump(stale, root / "models" / "sar" / "synthetic" / "svm.joblib")
+    monkeypatch.setenv("RADAR_ROOT", str(root))
+    at = AppTest.from_file(str(APP / "pages" / "1_Predict.py"), default_timeout=120).run()
+    assert not at.exception and any("radar.core.run" in e.value for e in at.error)
+
+
+def test_app_picks_up_models_from_a_new_run(quick_root, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(quick_root, root)
+    monkeypatch.setenv("RADAR_ROOT", str(root))
+    page = str(APP / "pages" / "1_Predict.py")
+    assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 4
+    (root / "models" / "sar" / "synthetic" / "svm.joblib").unlink()  # what a `--models rf xgb cnn` re-run leaves
+    assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 3
+
+
+def test_classical_models_use_no_deprecated_options():
+    import warnings
+    X, y = _toy()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        for m in build_classical(0).values():
+            m.fit(X, y).predict_proba(X[:2])
