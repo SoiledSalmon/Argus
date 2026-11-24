@@ -1,4 +1,5 @@
 """Train, save, load and predict with the four models for any data type, through the contract only."""
+import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -57,7 +58,9 @@ def make_predictor(dt: DataType, name: str, model) -> Callable[[np.ndarray], np.
 
 
 def save_models(models: dict, d: Path) -> None:
-    d.mkdir(parents=True, exist_ok=True)
+    """Replaces the folder's contents, so it always holds exactly the last run's models."""
+    shutil.rmtree(d, ignore_errors=True)
+    d.mkdir(parents=True)
     for n, m in models.items():
         if n == "cnn":
             torch.save(m.state_dict(), d / "cnn.pt")

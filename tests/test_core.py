@@ -230,3 +230,22 @@ def test_quick_run_never_touches_repo_results(monkeypatch):
     run.main(["--data", "sar", "--models", "svm", "--quick"])
     assert os.environ["RADAR_ROOT"] != str(repo) and (Path(os.environ["RADAR_ROOT"]) / "results" / "sar").exists()
     assert before == {p: p.stat().st_mtime for p in (repo / "results").rglob("*.csv")}
+
+
+def test_saving_replaces_models_from_an_older_run(tmp_path):
+    dt = DATA_TYPES["sar"]; b = subsample(dt.load("synthetic", 0), 6, 2, seed=0)
+    save_models(train_models(dt, b, ("svm", "cnn"), seed=0, cnn_epochs=1)[0], tmp_path)
+    save_models(train_models(dt, b, ("svm",), seed=0)[0], tmp_path)
+    assert list(load_models(dt, len(b.class_names), tmp_path)) == ["svm"]
+
+
+def test_predict_shows_run_hint_for_mismatched_model(quick_root, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(quick_root, root)
+    from sklearn.linear_model import LogisticRegression
+    import joblib
+    stale = LogisticRegression().fit(np.random.default_rng(0).normal(size=(20, 3)), np.arange(20) % 10)  # trained on 3 features: an older code version
+    joblib.dump(stale, root / "models" / "sar" / "synthetic" / "svm.joblib")
+    monkeypatch.setenv("RADAR_ROOT", str(root))
+    at = AppTest.from_file(str(APP / "pages" / "1_Predict.py"), default_timeout=120).run()
+    assert not at.exception and any("radar.core.run" in e.value for e in at.error)

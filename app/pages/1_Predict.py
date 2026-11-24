@@ -48,7 +48,12 @@ def ff(name: str) -> str:
 
 rows = []
 for n, m in ms.items():
-    p = make_predictor(dt, n, m)(x)[0]
+    try:
+        p = make_predictor(dt, n, m)(x)[0]
+    except ValueError:  # saved model was trained by an older code version (e.g. different feature count)
+        st.error(f"The saved {n} model was trained by an older version of the code. "
+                 f"Re-run: python -m radar.core.run --data {data} --source {source}")
+        st.stop()
     k = int(p.argmax())
     rows.append({"model": n, "predicted": b.class_names[k], "confidence": round(float(p[k]), 3),
                  "friend/foe": ff(b.class_names[k]), "true label": b.class_names[y],
