@@ -212,3 +212,4 @@ The **data-type interface** that `core/` and `app/` rely on provides:
 - 2026-11-23: Friend/Foe confidence is the confidence of the type prediction, mapped through D6. SVM uses `probability=True` so it can report one.
 - 2026-11-23: For real data with no clean test copies, the demo's "generate at level L" adds noise to a real test sample and labels it "added noise" (D9).
 - 2026-11-23: P1 picks the SAR speckle training range and sweep levels (D9 left them open).
+- 2026-11-24: SAR CNN uses 4 conv blocks (32-64-128-128) on log-scaled, per-chip standardised chips. 3 blocks on raw chips underfit (43% test acc), and this gets ~93% within the CPU budget.

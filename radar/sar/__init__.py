@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from radar.contracts import DataBundle, DataType
-from radar.sar.cnn import SarCNN
+from radar.sar.cnn import SarCNN, cnn_input
 from radar.sar.features import sar_features
 from radar.sar.synth import CLASS_NAMES, FOE, apply_speckle, make_clean
 
@@ -39,7 +39,7 @@ class SarData(DataType):
         return sar_features(X)
 
     def to_cnn_input(self, X):
-        return X[:, None].astype(np.float32)
+        return cnn_input(X)
 
     def build_cnn(self, n_classes):
         return SarCNN(n_classes)
