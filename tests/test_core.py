@@ -249,3 +249,13 @@ def test_predict_shows_run_hint_for_mismatched_model(quick_root, tmp_path, monke
     monkeypatch.setenv("RADAR_ROOT", str(root))
     at = AppTest.from_file(str(APP / "pages" / "1_Predict.py"), default_timeout=120).run()
     assert not at.exception and any("radar.core.run" in e.value for e in at.error)
+
+
+def test_app_picks_up_models_from_a_new_run(quick_root, tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    shutil.copytree(quick_root, root)
+    monkeypatch.setenv("RADAR_ROOT", str(root))
+    page = str(APP / "pages" / "1_Predict.py")
+    assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 4
+    (root / "models" / "sar" / "synthetic" / "svm.joblib").unlink()  # what a `--models rf xgb cnn` re-run leaves
+    assert len(AppTest.from_file(page, default_timeout=120).run().dataframe[0].value) == 3

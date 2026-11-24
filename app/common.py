@@ -42,6 +42,13 @@ def bundle(data: str, source: str, seed: int):
     return DATA_TYPES[data].load(source, seed=seed)
 
 
-@st.cache_resource
 def models(models_dir: str, data: str, n_classes: int) -> dict:
+    """Saved models, reloaded whenever a run changes the folder's files."""
+    d = Path(models_dir)
+    stamp = tuple(sorted((f.name, f.stat().st_mtime_ns) for f in d.iterdir())) if d.exists() else ()
+    return _models(models_dir, data, n_classes, stamp)
+
+
+@st.cache_resource
+def _models(models_dir: str, data: str, n_classes: int, stamp: tuple) -> dict:
     return load_models(DATA_TYPES[data], n_classes, Path(models_dir))
